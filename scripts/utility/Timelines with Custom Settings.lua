@@ -51,18 +51,29 @@ local function create_window()
 	local ui = script.ui
 	local dispatcher = script.dispatcher
 
-	local window = dispatcher:AddWindow(
+	local window_flags = nil
+
+	if ffi.os == "Windows" then
+		window_flags = 	
+		{
+			Window = true,
+			CustomizeWindowHint = true,
+			WindowCloseButtonHint = true,
+			WindowMaximizeButtonHint = true,
+		}
+	elseif ffi.os == "Linux" then
+		window_flags = 
+		{
+			Window = true,
+		}
+	end
+
+	local window = dispatcher:AddDialog(
 	{
 		ID = script.window_id,
 		WindowTitle = script.name,
-		WindowFlags =
-		{
-			Dialog = true,
-			WindowTitleHint = true,
-			WindowCloseButtonHint = true,
-		},
-
-		WindowModality = "WindowModal",
+		WindowFlags = window_flags,
+		WindowModality = "ApplicationModal",
 
 		Events = 
 		{
