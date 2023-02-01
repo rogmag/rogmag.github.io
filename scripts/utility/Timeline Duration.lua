@@ -24,7 +24,13 @@ SOFTWARE.
 
 -----------------------------------------------------------------------------
 
+
+	A script that shows the duration of all timelines in a project using frames, timecode and real time.
+	This is useful for learning the real duration of a timeline when using a fractional frame rate, as it 
+	doesn't correspond exactly to its timecode.
+
 	roger.magnusson@gmail.com
+
 
 ]]
 
@@ -215,9 +221,14 @@ local function create_window()
 		{
 			Window = true,
 		}
+	elseif ffi.os == "OSX" then
+		window_flags = 
+		{
+			Dialog = true,
+		}
 	end
 
-	local window = dispatcher:AddWindow(
+	local window = dispatcher:AddDialog(
 	{
 		ID = script.window_id,
 		WindowTitle = script.name,
@@ -250,7 +261,11 @@ local function create_window()
 			{
 				Weight = 0,
 
-				ui:HGap(0, 1),
+				ui:Label
+				{
+					Weight = 1,
+					ID = "Playhead",
+				},
 
 				ui:Button
 				{
@@ -291,6 +306,9 @@ end
 local function main()
 	local project = assert(resolve:GetProjectManager():GetCurrentProject(), "Couldn't get current project")
 	local current_timeline = assert(project:GetCurrentTimeline(), "Couldn't get current timeline")
+	local current_frame_rate = luaresolve.frame_rates:get_decimal(current_timeline:GetSetting("timelineFrameRate"))
+	local current_timecode = current_timeline:GetCurrentTimecode()
+	local current_frame = luaresolve:frame_from_timecode(current_timecode, current_frame_rate)
 	local timeline_count = project:GetTimelineCount()
 	local window, window_items = create_window()
 
@@ -307,13 +325,12 @@ local function main()
 		local frame_rate = luaresolve.frame_rates:get_decimal(timeline:GetSetting("timelineFrameRate"))
 		local drop_frame = timeline:GetSetting("timelineDropFrameTimecode") == "1"
 
-		-- Set values for the columns on this row
-		item:SetData(0, "DisplayRole", i) -- Using DisplayRole allows us to use natural sort order of numbers
-		item.Text[1] = timeline:GetName()
+		item:SetData(0, "DisplayRole", i) -- We're using SetData instead of Text so we can get the natural sort order of numbers
+		item:SetData(1, "DisplayRole", timeline:GetName())
 		item:SetData(2, "DisplayRole", frames)
-		item.Text[3] = string.format("%07.3f%s", frame_rate, iif(drop_frame, " DF", "")) -- We're adding leading zeros so we can sort correctly as a string (because of the drop frame tag "DF")
-		item.Text[4] = luaresolve:timecode_from_frame(frames, frame_rate, drop_frame)
-		item.Text[5] = luaresolve:time_from_frame(frames, frame_rate).time
+		item:SetData(3, "DisplayRole", string.format("%.3f%s", frame_rate, iif(drop_frame, " DF", ""))) -- If you want to sort 100fps and above correctly, add leading zeros using the string format "%07.3f%s", or don't convert this column to a string and use a separate column for indicating drop frame
+		item:SetData(4, "DisplayRole", luaresolve:timecode_from_frame(frames, frame_rate, drop_frame))
+		item:SetData(5, "DisplayRole", luaresolve:time_from_frame(frames, frame_rate).time)
 
 		-- Change the text color when using a fractional frame rate
 		if frame_rate % 1 > 0 then
@@ -329,6 +346,14 @@ local function main()
 
 	window_items.TimelinesTreeView:SetHeaderLabels( { "ID", "Name", "Frames", "FPS", "Duration (TC)", "Duration (Time)" } )
 	window_items.TimelinesTreeView:SortByColumn(1, "AscendingOrder")
+
+	window_items.Playhead.Text = string.format("<pre>Current Frame: <span style='color: white'>%s</span>   TC: <span style='color: white;'>%s</span>   Time: <span style='%s'>%s</span></pre>",
+		current_frame,
+		current_timecode,
+		iif(current_frame_rate % 1 > 0, "color: rgb(212, 173, 31);", "color: white;"),
+		luaresolve:time_from_frame(current_frame - current_timeline:GetStartFrame(), current_frame_rate).time
+	)
+
 	window:Show()
 	
 	-- Run the UI loop where it will wait for events

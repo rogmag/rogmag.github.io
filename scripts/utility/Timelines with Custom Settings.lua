@@ -66,6 +66,11 @@ local function create_window()
 		{
 			Window = true,
 		}
+	elseif ffi.os == "OSX" then
+		window_flags = 
+		{
+			Dialog = true,
+		}
 	end
 
 	local window = dispatcher:AddDialog(
@@ -81,7 +86,7 @@ local function create_window()
 			KeyPress = true,
 		},
 
-		FixedSize = { 300, 400 },
+		FixedSize = { 350, 400 },
 		
 		ui:VGroup
 		{

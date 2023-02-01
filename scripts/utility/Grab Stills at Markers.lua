@@ -24,6 +24,21 @@ SOFTWARE.
 
 -----------------------------------------------------------------------------
 
+
+	A script that allows you to grab stills from timeline markers and optionally export them to a folder.
+
+	This script also highlights an issue with scripting in Resolve. There's no way to lock the user
+	interface while the script is running and if the user opens a modal window, like Project Settings,
+	most of the scriptable operations will fail. What's even worse, if the automatic backup kicks in when
+	a script is running, the script will also fail.
+
+	Many functions in the Resolve API can return a status so you can check if it succeeded or not, but I
+	think what we really need is a way to lock the GUI and for backups to be postponed while running. Just
+	like what happens when you're rendering a file.
+
+	roger.magnusson@gmail.com
+
+
 ]]
 
 local script, luaresolve, libavutil
@@ -334,18 +349,34 @@ local function create_window(marker_count_by_color, still_album_name)
 	local left_column_minimum_size = { 100, 0 }
 	local left_column_maximum_size = { 100, 16777215 }
 
-	local window = dispatcher:AddWindow(
+	local window_flags = nil
+
+	if ffi.os == "Windows" then
+		window_flags = 	
+		{
+			Window = true,
+			CustomizeWindowHint = true,
+			WindowCloseButtonHint = true,
+		}
+	elseif ffi.os == "Linux" then
+		window_flags = 
+		{
+			Window = true,
+		}
+	elseif ffi.os == "OSX" then
+		window_flags = 
+		{
+			Dialog = true,
+		}
+	end
+
+	local window = dispatcher:AddDialog(
 	{
 		ID = script.window_id,
 		WindowTitle = script.name,
-		WindowFlags =
-		{
-			Dialog = true,
-			WindowTitleHint = true,
-			WindowCloseButtonHint = true,
-		},
+		WindowFlags = window_flags,
 
-		WindowModality = "WindowModal",
+		WindowModality = "ApplicationModal",
 
 		Events = 
 		{
