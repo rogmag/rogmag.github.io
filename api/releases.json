@@ -18,5 +18,15 @@
     "requiredHostVersion": "18.1.4",
     "url": "https://another.url",
     "version": "2.0.0"
+  },
+  "queue_timelines": {
+    "compatibleHosts": [
+      "DaVinci Resolve",
+      "DaVinci Resolve Studio",
+      "Fusion Studio"
+    ],
+    "requiredHostVersion": "18.1.4",
+    "url": "https://third.url",
+    "version": "2.0.0"
   }
 }
