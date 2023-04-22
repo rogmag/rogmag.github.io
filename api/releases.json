@@ -27,6 +27,7 @@
     ],
     "requiredHostVersion": "18.1.4",
     "url": "https://third.url",
-    "version": "2.0.0"
+    "version": "2.0.0",
+    "sha256Hash": "cf51da1735a023e244b38dcca0e99d2c8e5f89579cb1007356c640a0cef48089"
   }
 }
