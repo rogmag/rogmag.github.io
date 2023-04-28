@@ -37,7 +37,7 @@ local script, luaresolve, libavutil, log
 script = 
 {
 	filename = debug.getinfo(1,"S").source:match("^.*%@(.*)"),
-	version = "1.0",
+	version = "1.1",
 	name = "Set Timecode for Media Pool Clips",
 	window_id = "SetTimecodeForMediaPoolClips",
 	default_timeout = 30, -- seconds
@@ -48,6 +48,7 @@ script =
 		include_sub_bins = true,
 		mode = nil,
 		timecode = "00:00:00:00",
+		use_date_created = false,
 		offset_frames = 0,
 		copy_original_tc = true,
 		skip_clips_in_use = true,
@@ -62,7 +63,7 @@ script =
 			ADD_TIMECODE = "Add timecode",
 			SUBTRACT_TIMECODE = "Subtract timecode",
 			OFFSET_FRAMES = "Offset frames",
-			RESTORE_FROM_AUDIO_START_TC = "Restore original timecode from Audio Start TC metadata",
+			RESTORE_FROM_AUDIO_START_TC = "Restore original timecode from \"Audio Start TC\" metadata",
 		},
 
 		METADATA_VALUES =
@@ -649,7 +650,11 @@ script =
 						if script.settings.mode == script.constants.MODE.OFFSET_FRAMES then
 							return string.format("Timecode was set to %s frame%s on %s of %s media pool clips", iif(script.settings.offset_frames < 0, tostring(script.settings.offset_frames), "+"..tostring(script.settings.offset_frames)), iif(script.settings.offset_frames == 1, "", "s"), log.updated_items, log.total_item_count)
 						else
-							return string.format("Timecode was set to %s on %s of %s media pool clips", script.settings.timecode, log.updated_items, log.total_item_count)
+							if script.settings.mode == script.constants.MODE.SET_TIMECODE and script.settings.use_date_created then
+								return string.format("Timecode was set to \"Date Created\" on %s of %s media pool clips", log.updated_items, log.total_item_count)
+							else
+								return string.format("Timecode was set to %s on %s of %s media pool clips", script.settings.timecode, log.updated_items, log.total_item_count)
+							end
 						end
 					else
 						return "Timecode was not set on any media pool clips"
@@ -848,6 +853,7 @@ luaresolve =
 					usage = clip_properties["Usage"],
 					fps = clip_properties["FPS"],
 					drop_frame = clip_properties["Drop frame"],
+					date_created = clip_properties["Date Created"],
 
 					-- Note: Adding these starts to affect performance even more
 					--unique_id = media_pool_item:GetUniqueId(),
@@ -1381,6 +1387,13 @@ local function create_window(media_pool)
 							MaximumSize = { 100, 16777215 },
 						},
 
+						ui:CheckBox
+						{
+							ID = "UseDateCreatedCheckBox",
+							Text = "Use \"Date Created\" metadata",
+							Events = { Toggled = true },
+						},
+
 						ui:HGap(0, 1),
 					},
 
@@ -1422,7 +1435,7 @@ local function create_window(media_pool)
 					{
 						Weight = 0,	
 						ID = "CopyOriginalTimecodeCheckBox",
-						Text = "Copy original timecode to Audio Start TC metadata",
+						Text = "Copy original timecode to \"Audio Start TC\" metadata",
 						ToolTip = "<p>Copy will be performed if the \"Audio TC Type\" and \"Audio Start TC\" metadata fields are empty.</p>",
 					},
 				},
@@ -1549,7 +1562,8 @@ local function create_window(media_pool)
 		elseif window_items.ModeComboBox.CurrentText == script.constants.MODE.RESTORE_FROM_AUDIO_START_TC then
 			window_items.StartButton.Enabled = true
 		end
-		
+
+		window_items.UseDateCreatedCheckBox.Hidden = window_items.ModeComboBox.CurrentText ~= script.constants.MODE.SET_TIMECODE
 		window_items.StartTimecodeGroup.Hidden = window_items.ModeComboBox.CurrentText == script.constants.MODE.RESTORE_FROM_AUDIO_START_TC
 		window_items.StartButton.Enabled = window_items.StartButton.Enabled and window_items.BinComboBox:Count() > 0
 
@@ -1578,6 +1592,7 @@ local function create_window(media_pool)
 
 		window_items.ModeComboBox.CurrentText = script.settings.mode
 		window_items.TimecodeLineEdit.Text = script.settings.timecode
+		window_items.UseDateCreatedCheckBox.Checked = script.settings.use_date_created
 		window_items.OffsetFramesSpinBox.Value = script.settings.offset_frames
 		window_items.CopyOriginalTimecodeCheckBox.Checked = script.settings.copy_original_tc
 		window_items.SkipClipsInUseCheckBox.Checked = script.settings.skip_clips_in_use
@@ -1621,6 +1636,10 @@ local function create_window(media_pool)
 		window_items.StartButton.Enabled = is_valid_timecode() and window_items.BinComboBox:Count() > 0
 	end
 
+	window.On.UseDateCreatedCheckBox.Toggled = function(ev)
+		window_items.TimecodeLineEdit.Enabled = not window_items.UseDateCreatedCheckBox.Checked
+	end
+
 	window.On.OffsetFramesSpinBox.ValueChanged = function(ev)
 		window_items.StartButton.Enabled = ev.Value ~= 0 and window_items.BinComboBox:Count() > 0
 	end
@@ -1646,6 +1665,7 @@ local function create_window(media_pool)
 				script.settings.offset_frames = window_items.OffsetFramesSpinBox.Value
 			else
 				script.settings.timecode = window_items.TimecodeLineEdit.Text
+				script.settings.use_date_created = window_items.UseDateCreatedCheckBox.Checked
 			end
 		end
 
@@ -1683,6 +1703,17 @@ local function set_timecode_for_media_pool_clips(folder)
 
 	local function get_timecode(media_pool_item_info)
 		local tc = script.settings.timecode
+
+		if script.settings.mode == script.constants.MODE.SET_TIMECODE and script.settings.use_date_created then
+			if media_pool_item_info.date_created then
+				local hours, minutes, seconds = media_pool_item_info.date_created:match("(%d+):(%d+):(%d+)")
+				local frame = math.ceil((3600 * hours + 60 * minutes + seconds) * media_pool_item_info.fps)
+				tc = luaresolve:timecode_from_frame(frame, media_pool_item_info.fps, media_pool_item_info.drop_frame)
+			else
+				-- If we don't have a date_created, set tc to the existing start_tc, this will make us skip this clip
+				tc = media_pool_item_info.start_tc
+			end
+		end
 
 		-- If the clip uses drop frame timecode we want to ensure there's a semicolon used as the seconds/frames separator
 		if media_pool_item_info.drop_frame == "1" then
@@ -1857,6 +1888,8 @@ local function set_timecode_for_media_pool_clips(folder)
 		progress_header = "Restoring Timecode from Metadata"
 	elseif script.settings.mode == script.constants.MODE.OFFSET_FRAMES then
 		progress_header = string.format("Setting Timecode to %s frame%s", iif(script.settings.offset_frames < 0, tostring(script.settings.offset_frames), "+"..tostring(script.settings.offset_frames)), iif(script.settings.offset_frames == 1, "", "s"))
+	elseif script.settings.mode == script.constants.MODE.SET_TIMECODE and script.settings.use_date_created then
+		progress_header = "Setting Timecode to \"Date Created\" Metadata"
 	else
 		progress_header = string.format("Setting Timecode to %s", script.settings.timecode)
 	end
